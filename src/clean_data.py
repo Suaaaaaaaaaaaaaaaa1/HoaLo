@@ -10,7 +10,6 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-import yaml
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
