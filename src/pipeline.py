@@ -1,6 +1,10 @@
 """Pipeline runner: scrape → clean → nlp_analysis → email"""
-import os, sys, logging, argparse, subprocess
-from pathlib import Path
+import os
+import sys
+import logging
+import argparse
+import subprocess
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,9 +18,10 @@ STEPS = [
     ("email", "src/email_sender.py", ["--report", "reports/strategy_report.md", "--figures", "reports/figures"]),
 ]
 
+
 def run_step(name, script, args, config, dry_run=False):
     cmd = [sys.executable, script, "--config", config] + args
-    logger.info(f"\n{'='*60}\nSTEP: {name}\n{'='*60}")
+    logger.info(f"\n{'=' * 60}\nSTEP: {name}\n{'=' * 60}")
     if dry_run:
         logger.info("[DRY RUN]")
         return True
@@ -25,6 +30,7 @@ def run_step(name, script, args, config, dry_run=False):
         logger.error(f"Step '{name}' failed")
         return False
     return True
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -49,6 +55,7 @@ def main():
         if not run_step(name, script, step_args, args.config, args.dry_run):
             sys.exit(1)
     logger.info("\nPipeline complete!")
+
 
 if __name__ == "__main__":
     main()
