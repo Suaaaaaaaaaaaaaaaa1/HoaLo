@@ -1,14 +1,6 @@
-"""
-Main pipeline runner.
-scrape → clean → preprocess → sentiment → topics → cross_analysis → visualize → strategy → email
-"""
-import os
-import sys
-import logging
-import argparse
-import subprocess
+"""Pipeline runner: scrape → clean → nlp_analysis → email"""
+import os, sys, logging, argparse, subprocess
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,49 +10,30 @@ logger = logging.getLogger(__name__)
 STEPS = [
     ("scrape", "src/scraper.py", ["--output", "data/raw"]),
     ("clean", "src/clean_data.py", ["--input", "data/raw", "--output", "data/cleaned"]),
-    ("preprocess", "src/preprocessing.py", ["--input", "data/cleaned", "--output", "data/processed"]),
-    ("sentiment", "src/sentiment.py", ["--input", "data/processed", "--output", "data/results/sentiment"]),
-    ("topics", "src/topic_modeling.py", ["--input", "data/processed", "--output", "data/results/topics"]),
-    ("cross_analysis", "src/cross_analysis.py", ["--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--cleaned", "data/cleaned", "--output", "data/results/cross_analysis", "--figures", "reports/figures"]),
-    ("visualize", "src/visualize.py", ["--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--raw", "data/cleaned", "--output", "reports/figures"]),
-    ("strategy", "src/strategy.py", ["--raw", "data/cleaned", "--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--output", "reports/strategy_report.md"]),
+    ("nlp", "src/nlp_analysis.py", ["--input", "data/cleaned", "--output", "data/results", "--figures", "reports/figures"]),
     ("email", "src/email_sender.py", ["--report", "reports/strategy_report.md", "--figures", "reports/figures"]),
 ]
 
-
-def run_step(name: str, script: str, args: list[str], config_path: str, dry_run: bool = False):
-    cmd = [sys.executable, script, "--config", config_path] + args
-    logger.info(f"\n{'='*60}")
-    logger.info(f"STEP: {name}")
-    logger.info(f"CMD:  {' '.join(cmd)}")
-    logger.info(f"{'='*60}")
-
+def run_step(name, script, args, config, dry_run=False):
+    cmd = [sys.executable, script, "--config", config] + args
+    logger.info(f"\n{'='*60}\nSTEP: {name}\n{'='*60}")
     if dry_run:
-        logger.info("[DRY RUN] Skipping execution")
+        logger.info("[DRY RUN]")
         return True
-
-    result = subprocess.run(cmd, capture_output=False)
+    result = subprocess.run(cmd)
     if result.returncode != 0:
-        logger.error(f"Step '{name}' failed with return code {result.returncode}")
+        logger.error(f"Step '{name}' failed")
         return False
-
-    logger.info(f"Step '{name}' completed successfully")
     return True
 
-
 def main():
-    parser = argparse.ArgumentParser(description="Run the full Hỏa Lò analysis pipeline")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/pipeline.yaml")
-    parser.add_argument("--start-from", choices=[s[0] for s in STEPS], default=None)
-    parser.add_argument("--stop-after", choices=[s[0] for s in STEPS], default=None)
+    parser.add_argument("--start-from", choices=[s[0] for s in STEPS])
     parser.add_argument("--skip", nargs="*", default=[])
-    parser.add_argument("--only", choices=[s[0] for s in STEPS], default=None)
+    parser.add_argument("--only", choices=[s[0] for s in STEPS])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-
-    if not Path(args.config).exists():
-        logger.error(f"Config file not found: {args.config}")
-        sys.exit(1)
 
     started = args.start_from is None
     for name, script, step_args in STEPS:
@@ -70,23 +43,12 @@ def main():
             if name == args.start_from:
                 started = True
             else:
-                logger.info(f"Skipping step: {name}")
                 continue
         if name in args.skip:
-            logger.info(f"Skipping step: {name} (--skip)")
             continue
-
-        success = run_step(name, script, step_args, args.config, args.dry_run)
-        if not success:
-            logger.error(f"Pipeline failed at step: {name}")
+        if not run_step(name, script, step_args, args.config, args.dry_run):
             sys.exit(1)
-
-        if args.stop_after and name == args.stop_after:
-            logger.info(f"Stopping after step: {name}")
-            break
-
-    logger.info("\nPipeline completed successfully!")
-
+    logger.info("\nPipeline complete!")
 
 if __name__ == "__main__":
     main()
