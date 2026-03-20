@@ -99,7 +99,7 @@ def main():
     config = load_config(args.config)
     client = ApifyClient(token)
 
-    page_url = config.get("page", {}).get("url", "https://www.facebook.com/hoaloprisonrelic")
+    page_url = config.get("page", {}).get("url", "https://www.facebook.com/hoaloprisonrelic/")
     page_name = config.get("page", {}).get("name", "hoa_lo")
 
     logger.info(f"=== Scraping: {page_name} ({page_url}) ===")
