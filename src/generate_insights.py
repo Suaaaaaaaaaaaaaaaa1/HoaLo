@@ -42,7 +42,7 @@ def generate_prompt(data: dict) -> str:
 
     prompt = f"""
     Bạn là một chuyên gia Chiến lược Mạng xã hội (Social Media Strategist) hàng đầu. 
-    Dưới đây là dữ liệu phân tích Fanpage Facebook "Di tích Lịch sử Nhà tù Hỏa Lò" trong thời gian qua.
+    Dưới đây là dữ liệu phân tích Fanpage Facebook "Di tích Lịch sử Nhà tù Hỏa Lò" của 1 tuần vừa qua.
     
     TÓM TẮT DỮ LIỆU (JSON data):
     - Tổng số bài post đã phân tích: {total_posts}
@@ -54,13 +54,16 @@ def generate_prompt(data: dict) -> str:
     Hãy viết một bản Báo cáo Phân tích và Đề xuất Chiến lược Nội dung thật chuyên sâu, trình bày dưới định dạng Markdown để tôi gửi cho Ban Giám đốc. 
     
     Báo cáo cần có CẤU TRÚC 4 PHẦN như sau:
-    1. **Tổng quan Hiệu suất (Executive Summary):** Đánh giá ngắn gọn tình hình chung của Fanpage dựa trên dữ liệu.
+    1. **Tổng quan Hiệu suất (Executive Summary):** Đánh giá ngắn gọn tình hình chung của Fanpage dựa trên dữ liệu tuần qua.
     2. **Phân tích Sâu sắc (Deep-dive Insights):** Phân tích tại sao chủ đề "{best_topic_name}" lại hiệu quả. Đánh giá về tỷ lệ cảm xúc của người dùng.
-    3. **Phân tích Từ khóa (Keyword Analysis):** Những từ khóa này phản ánh điều gì về sở thích của tệp khán giả Hỏa Lò?
-    4. **Đề xuất Chiến lược (Actionable Recommendations):** Đưa ra 3-4 hành động cụ thể cho đội ngũ Content Creator trong tháng tới (Ví dụ: Nên viết thêm về chủ đề gì, giảm bớt nội dung gì, cách kể chuyện ra sao).
+    3. **Phân tích Từ khóa (Keyword Analysis):** Những từ khóa này phản ánh điều gì về sở thích của tệp khán giả Hỏa Lò hiện tại?
+    4. **Chiến lược Nội dung 7 ngày tới (Next 7-Day Action Plan):** - Đưa ra 3-4 hành động/tuyến bài CỤ THỂ cần triển khai ngay trong tuần này. 
+       - Trọng tâm vào việc kế thừa chủ đề đang hot và khắc phục các điểm yếu (nếu có).
+       - Gợi ý 1 ý tưởng bài viết chi tiết (Tiêu đề, hướng nội dung) để team Content làm ngay.
     
     LƯU Ý: 
-    - Giữ giọng văn chuyên nghiệp, khách quan, sâu sắc nhưng dễ hiểu.
+    - Giữ giọng văn chuyên nghiệp, khách quan, sâu sắc nhưng mang tính thực chiến cao.
+    - Định dạng rõ ràng, súc tích để team đọc xong có thể làm việc được ngay trong tuần.
     - Không bịa đặt thêm số liệu ngoài các thông tin đã cung cấp.
     """
     return prompt
