@@ -23,21 +23,30 @@ SENT_COLORS = {"positive": "#2ecc71", "neutral": "#3498db", "negative": "#e74c3c
 
 
 def load_and_merge(sentiment_dir: Path, topics_dir: Path, cleaned_dir: Path) -> pd.DataFrame:
-    sent_path = sentiment_dir / "hoa_lo_sentiment.csv"
-    topics_path = topics_dir / "hoa_lo_doc_topics.csv"
+    sent_files = list(sentiment_dir.glob("*_sentiment.csv"))
+    topics_files = list(topics_dir.glob("*_doc_topics.csv"))
     cleaned_path = cleaned_dir / "posts_cleaned.csv"
 
-    if not sent_path.exists() or not topics_path.exists():
-        logger.error("Sentiment or topics CSV not found")
+    if not sent_files:
+        logger.error(f"No sentiment CSV found in {sentiment_dir}")
+        logger.error(f"  Contents: {list(sentiment_dir.glob('*')) if sentiment_dir.exists() else 'dir not found'}")
         return pd.DataFrame()
 
+    sent_path = sent_files[0]
+    logger.info(f"Loading sentiment: {sent_path.name}")
     df_sent = pd.read_csv(sent_path, encoding="utf-8")
-    df_topics = pd.read_csv(topics_path, encoding="utf-8")
 
-    topic_cols = [c for c in df_topics.columns if c.startswith("topic_") and c.endswith("_weight")]
-    merge_cols = ["post_id", "dominant_topic"] + topic_cols
-    available = [c for c in merge_cols if c in df_topics.columns]
-    df = df_sent.merge(df_topics[available], on="post_id", how="left") if "post_id" in df_topics.columns else df_sent.copy()
+    if topics_files:
+        topics_path = topics_files[0]
+        logger.info(f"Loading topics: {topics_path.name}")
+        df_topics = pd.read_csv(topics_path, encoding="utf-8")
+        topic_cols = [c for c in df_topics.columns if c.startswith("topic_") and c.endswith("_weight")]
+        merge_cols = ["post_id", "dominant_topic"] + topic_cols
+        available = [c for c in merge_cols if c in df_topics.columns]
+        df = df_sent.merge(df_topics[available], on="post_id", how="left") if "post_id" in df_topics.columns else df_sent.copy()
+    else:
+        logger.warning(f"No doc_topics CSV found in {topics_dir}, using sentiment only")
+        df = df_sent.copy()
 
     if "dominant_topic" not in df.columns and topic_cols:
         df["dominant_topic"] = df[topic_cols].idxmax(axis=1)
@@ -65,10 +74,10 @@ def load_and_merge(sentiment_dir: Path, topics_dir: Path, cleaned_dir: Path) -> 
 
 
 def load_topic_labels(topics_dir: Path) -> dict:
-    json_path = topics_dir / "hoa_lo_topics.json"
-    if not json_path.exists():
+    json_files = list(topics_dir.glob("*_topics.json"))
+    if not json_files:
         return {}
-    with open(json_path) as f:
+    with open(json_files[0]) as f:
         data = json.load(f)
     labels = {}
     for t in data.get("topics", []):
