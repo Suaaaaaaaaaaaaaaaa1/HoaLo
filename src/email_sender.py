@@ -14,6 +14,7 @@ from email import encoders
 from datetime import datetime
 
 import yaml
+import markdown
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,22 +22,49 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%
 logger = logging.getLogger(__name__)
 
 
-def build_email_body(report_path: Path) -> str:
+def build_email_body_html(report_path: Path) -> str:
+    """Đọc file Markdown và chuyển đổi thành HTML với CSS cơ bản để hiển thị đẹp trên Gmail."""
     if report_path.exists():
         content = report_path.read_text(encoding="utf-8")
-        return f"""Xin chào,
-
-Dưới đây là báo cáo phân tích Facebook tự động cho Di tích Nhà tù Hỏa Lò.
-Báo cáo được tạo lúc: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-
-Chi tiết báo cáo đính kèm trong file. Tóm tắt nhanh:
-
-{content[:500]}...
-
----
-Đây là email tự động từ pipeline phân tích Hỏa Lò Facebook Analysis.
-"""
-    return "Báo cáo phân tích đính kèm. Vui lòng kiểm tra file attachment."
+        # Chuyển đổi Markdown sang HTML
+        html_content = markdown.markdown(content, extensions=['extra', 'tables'])
+        
+        # Template HTML bọc bên ngoài báo cáo
+        html_template = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                h1, h2, h3 {{ color: #2c3e50; }}
+                h1 {{ border-bottom: 2px solid #3498db; padding-bottom: 10px; font-size: 24px; }}
+                h2 {{ color: #2980b9; margin-top: 25px; }}
+                ul, ol {{ margin-bottom: 20px; }}
+                li {{ margin-bottom: 8px; }}
+                strong {{ color: #d35400; }}
+                .header-info {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #3498db; margin-bottom: 25px; }}
+                .footer {{ margin-top: 40px; font-size: 0.85em; color: #7f8c8d; border-top: 1px solid #eeeeee; padding-top: 15px; text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <div class="header-info">
+                <p style="margin: 0 0 10px 0;"><strong>Xin chào,</strong></p>
+                <p style="margin: 0 0 5px 0;">Dưới đây là <b>Báo cáo Phân tích Chiến lược Facebook - Di tích Nhà tù Hỏa Lò</b> được tổng hợp tự động bởi hệ thống AI.</p>
+                <p style="margin: 0; font-size: 0.9em; color: #555;"><i>Thời gian tạo báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M')}</i></p>
+            </div>
+            
+            <div class="report-content">
+                {html_content}
+            </div>
+            
+            <div class="footer">
+                <p>Đây là email tự động từ hệ thống Hoa Lo Facebook Analysis Pipeline.<br>Vui lòng xem các biểu đồ chi tiết trong file đính kèm.</p>
+            </div>
+        </body>
+        </html>
+        """
+        return html_template
+        
+    return "<p>Báo cáo phân tích đính kèm. Vui lòng kiểm tra file attachment.</p>"
 
 
 def attach_file(msg: MIMEMultipart, filepath: Path):
@@ -68,16 +96,19 @@ def send_report(config: dict, report_path: Path, figures_dir: Path):
 
     msg = MIMEMultipart()
     prefix = email_cfg.get("subject_prefix", "[Hoa Lo Analysis]")
-    msg["Subject"] = f"{prefix} Báo cáo phân tích {datetime.now().strftime('%d/%m/%Y')}"
+    msg["Subject"] = f"{prefix} Báo cáo Chiến lược AI - {datetime.now().strftime('%d/%m/%Y')}"
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
 
-    body = build_email_body(report_path)
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    # Đính kèm nội dung HTML vào thân email
+    html_body = build_email_body_html(report_path)
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    # Vẫn giữ lại file .md đính kèm phòng trường hợp cần lưu trữ gốc
     if email_cfg.get("attach_report", True) and report_path.exists():
         attach_file(msg, report_path)
 
+    # Đính kèm các biểu đồ hình ảnh
     if email_cfg.get("attach_figures", True) and figures_dir.exists():
         for fig_path in sorted(figures_dir.glob("*.png")):
             attach_file(msg, fig_path)
@@ -115,7 +146,7 @@ def main():
 
     if args.dry_run:
         logger.info("=== DRY RUN ===")
-        body = build_email_body(report_path)
+        body = build_email_body_html(report_path)
         print(body)
         if figures_dir.exists():
             figs = list(figures_dir.glob("*.png"))
