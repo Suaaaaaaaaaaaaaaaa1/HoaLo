@@ -150,7 +150,7 @@ jobs:
             --input data/cleaned \
             --output data/results \
             --figures reports/figures \
-            --topics 7
+            --topics 5
             
       # --- BƯỚC MỚI: CHẠY GEMINI AI ---
       - name: Generate AI Strategy Report
