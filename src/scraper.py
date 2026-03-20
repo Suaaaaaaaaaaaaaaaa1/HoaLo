@@ -1,6 +1,7 @@
 """
-Facebook Page Posts Scraper via Apify.
-Uses apify/facebook-posts-scraper Actor to collect posts from Hỏa Lò page.
+Apify Data Fetcher.
+Mode 1 (default): Fetch data from the latest Apify dataset (pre-scheduled run) — instant.
+Mode 2 (--trigger): Trigger a new Actor run and wait — slow, 10-15min.
 """
 import os
 import sys
@@ -27,8 +28,37 @@ def load_config(path: str = "config/pipeline.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def scrape_page(client: ApifyClient, page_url: str, config: dict) -> list[dict]:
+def fetch_latest_dataset(client: ApifyClient, config: dict) -> list[dict]:
     scraper_cfg = config.get("scraper", {})
+    dataset_id = scraper_cfg.get("dataset_id")
+
+    if dataset_id:
+        logger.info(f"Fetching from specified dataset: {dataset_id}")
+        items = list(client.dataset(dataset_id).iterate_items())
+    else:
+        logger.info(f"Fetching latest run dataset from Actor: {ACTOR_ID}")
+        runs = client.actor(ACTOR_ID).runs().list(limit=1, desc=True)
+        if not runs.items:
+            logger.error("No previous runs found. Run the Actor manually on Apify Console first, or use --trigger.")
+            return []
+        last_run = runs.items[0]
+        dataset_id = last_run.get("defaultDatasetId")
+        run_status = last_run.get("status")
+        finished_at = last_run.get("finishedAt", "unknown")
+        logger.info(f"Latest run: status={run_status}, finished={finished_at}, dataset={dataset_id}")
+
+        if run_status != "SUCCEEDED":
+            logger.warning(f"Latest run status is '{run_status}', data may be incomplete")
+
+        items = list(client.dataset(dataset_id).iterate_items())
+
+    logger.info(f"Fetched {len(items)} items from dataset")
+    return items
+
+
+def trigger_new_run(client: ApifyClient, config: dict) -> list[dict]:
+    scraper_cfg = config.get("scraper", {})
+    page_url = config.get("page", {}).get("url", "https://www.facebook.com/hoaloprisonrelic/")
     max_posts = scraper_cfg.get("max_posts", 500)
 
     run_input = {
@@ -36,16 +66,16 @@ def scrape_page(client: ApifyClient, page_url: str, config: dict) -> list[dict]:
         "resultsLimit": max_posts,
     }
 
-    logger.info(f"Starting Apify Actor: {ACTOR_ID}")
+    logger.info(f"Triggering new Actor run: {ACTOR_ID}")
     logger.info(f"Page: {page_url} | Max posts: {max_posts}")
+    logger.info("This will take 10-15 minutes...")
 
     run = client.actor(ACTOR_ID).call(run_input=run_input)
-
     dataset_id = run["defaultDatasetId"]
     logger.info(f"Run finished. Dataset: https://console.apify.com/storage/datasets/{dataset_id}")
 
     items = list(client.dataset(dataset_id).iterate_items())
-    logger.info(f"Collected {len(items)} raw items")
+    logger.info(f"Collected {len(items)} items")
     return items
 
 
@@ -86,9 +116,10 @@ def normalize_items(items: list[dict]) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape Facebook page posts via Apify")
+    parser = argparse.ArgumentParser(description="Fetch Facebook data from Apify")
     parser.add_argument("--config", default="config/pipeline.yaml")
     parser.add_argument("--output", default="data/raw")
+    parser.add_argument("--trigger", action="store_true", help="Trigger new Actor run instead of fetching latest dataset")
     args = parser.parse_args()
 
     token = os.getenv("APIFY_API_TOKEN")
@@ -98,15 +129,15 @@ def main():
 
     config = load_config(args.config)
     client = ApifyClient(token)
-
-    page_url = config.get("page", {}).get("url", "https://www.facebook.com/hoaloprisonrelic/")
     page_name = config.get("page", {}).get("name", "hoa_lo")
 
-    logger.info(f"=== Scraping: {page_name} ({page_url}) ===")
-    items = scrape_page(client, page_url, config)
+    if args.trigger:
+        items = trigger_new_run(client, config)
+    else:
+        items = fetch_latest_dataset(client, config)
 
     if not items:
-        logger.warning("No posts collected. Check Apify token and page URL.")
+        logger.error("No data fetched. Check Apify Console for available datasets.")
         sys.exit(1)
 
     df = normalize_items(items)
@@ -124,9 +155,9 @@ def main():
     logger.info(f"Saved raw JSON to {json_path}")
 
     meta = {
-        "scraped_at": datetime.now().isoformat(),
+        "fetched_at": datetime.now().isoformat(),
+        "mode": "trigger" if args.trigger else "fetch_latest",
         "actor": ACTOR_ID,
-        "page_url": page_url,
         "total_posts": len(df),
         "date_range": {
             "earliest": str(df["created_time"].min()) if not df.empty else None,
@@ -135,7 +166,7 @@ def main():
     }
     with open(output_dir / "scrape_metadata.json", "w") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
-    logger.info("Metadata saved")
+    logger.info("Done!")
 
 
 if __name__ == "__main__":
