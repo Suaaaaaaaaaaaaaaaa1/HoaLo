@@ -7,7 +7,6 @@ on:
       - "src/**"
       - "data/vietnamese_stopwords.txt"
       - "config/**"
-      - "notebooks/**"
       - "requirements.txt"
   pull_request:
     branches: [main]
@@ -20,7 +19,7 @@ on:
         type: boolean
         default: false
       trigger_new_crawl:
-        description: "Trigger NEW Apify crawl (slow, 10-15min). Default: fetch latest dataset (fast)"
+        description: "Trigger NEW Apify crawl (slow ~15min)"
         type: boolean
         default: false
       send_email:
@@ -51,12 +50,6 @@ jobs:
         run: ruff check src/ --output-format=github
       - name: Ruff check notebooks
         run: nbqa ruff notebooks/ --output-format=github
-        continue-on-error: true
-      - name: Check notebook outputs stripped
-        run: |
-          for nb in notebooks/*.ipynb; do
-            [ -f "$nb" ] && nbstripout --is-stripped "$nb"
-          done
         continue-on-error: true
 
   test:
@@ -100,18 +93,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install apify-client pandas pyyaml python-dotenv
+        run: pip install apify-client pandas pyyaml python-dotenv
       - name: Fetch data from Apify
         env:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.trigger_new_crawl }}" = "true" ]; then
-            echo "Triggering NEW Apify crawl (slow)..."
             python src/scraper.py --output data/raw --config config/pipeline.yaml --trigger
           else
-            echo "Fetching latest dataset from Apify (fast)..."
             python src/scraper.py --output data/raw --config config/pipeline.yaml
           fi
       - name: Upload raw data
@@ -121,14 +110,14 @@ jobs:
           path: data/raw/
           retention-days: 90
 
-  data-validation:
-    name: Validate Data & EDA
+  clean-data:
+    name: Clean Raw Data
     runs-on: ubuntu-latest
     needs: [test, fetch-data]
     if: always() && needs.test.result == 'success' && (needs.fetch-data.result == 'success' || needs.fetch-data.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
-      - name: Download scraped data (if available)
+      - name: Download raw data
         uses: actions/download-artifact@v4
         with:
           name: raw-data
@@ -138,55 +127,50 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Validate raw data schema
+        run: pip install pandas pyyaml
+      - name: Run data cleaning
+        run: python src/clean_data.py --input data/raw --output data/cleaned --config config/pipeline.yaml
+      - name: Validate cleaned data
         run: |
           python -c "
           import pandas as pd, sys
           from pathlib import Path
 
-          required_cols = ['post_id', 'message', 'created_time', 'type', 'likes', 'comments', 'shares']
-          csv_path = Path('data/raw/hoa_lo_posts.csv')
-
+          csv_path = Path('data/cleaned/posts_cleaned.csv')
           if not csv_path.exists():
-              print('WARN: hoa_lo_posts.csv not found, skipping validation')
-              sys.exit(0)
+              print('FAIL: posts_cleaned.csv not found')
+              sys.exit(1)
 
           df = pd.read_csv(csv_path)
-          missing = set(required_cols) - set(df.columns)
+          required = ['postId', 'datetime', 'text', 'engagement_total', 'media_type']
+          missing = set(required) - set(df.columns)
           if missing:
               print(f'FAIL: missing columns: {missing}')
               sys.exit(1)
-          print(f'OK: hoa_lo_posts.csv — {len(df)} rows, {len(df.columns)} cols')
+
+          print(f'OK: {len(df)} posts, {len(df.columns)} cols')
+          print(f'  Date: {df[\"date\"].min()} → {df[\"date\"].max()}')
+          print(f'  With text: {df[\"has_text\"].sum()}')
+          print(f'  Engagement: {df[\"engagement_total\"].sum():,}')
           "
-      - name: Run EDA notebook (headless)
-        run: |
-          pip install jupyter nbconvert
-          if [ -f notebooks/01_eda.ipynb ]; then
-            jupyter nbconvert --to notebook --execute \
-              --ExecutePreprocessor.timeout=600 \
-              --output /tmp/eda_output.ipynb \
-              notebooks/01_eda.ipynb
-          else
-            echo "EDA notebook not found, skipping"
-          fi
-        continue-on-error: true
+      - name: Upload cleaned data
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleaned-data
+          path: data/cleaned/
 
   nlp-pipeline:
     name: NLP & Sentiment Analysis
     runs-on: ubuntu-latest
-    needs: data-validation
-    if: needs.data-validation.result == 'success'
+    needs: clean-data
+    if: needs.clean-data.result == 'success'
     steps:
       - uses: actions/checkout@v4
-      - name: Download scraped data
+      - name: Download cleaned data
         uses: actions/download-artifact@v4
         with:
-          name: raw-data
-          path: data/raw/
-        continue-on-error: true
+          name: cleaned-data
+          path: data/cleaned/
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -205,31 +189,24 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
       - name: Step 1 — Preprocessing
-        run: python src/preprocessing.py --input data/raw --output data/processed --config config/pipeline.yaml
+        run: python src/preprocessing.py --input data/cleaned --output data/processed --config config/pipeline.yaml
       - name: Step 2 — Sentiment Analysis
         run: python src/sentiment.py --input data/processed --output data/results/sentiment --config config/pipeline.yaml
       - name: Step 3 — LDA Topic Modeling
         run: python src/topic_modeling.py --input data/processed --output data/results/topics --config config/pipeline.yaml
-      - name: Validate sentiment distribution
+      - name: Validate sentiment
         run: |
           python -c "
           import pandas as pd, sys
           from pathlib import Path
 
-          csv_path = Path('data/results/sentiment/hoa_lo_sentiment.csv')
-          if not csv_path.exists():
-              print('WARN: No sentiment results found')
-              sys.exit(0)
-
-          df = pd.read_csv(csv_path)
-          dist = df['sentiment'].value_counts(normalize=True) * 100
-          print('=== Hỏa Lò Sentiment ===')
-          for label in ['neutral', 'positive', 'negative']:
-              pct = dist.get(label, 0)
-              print(f'  {label}: {pct:.1f}%')
-          if dist.get('neutral', 0) < 40:
-              print('WARN: neutral < 40%, check preprocessing')
-          print('Sentiment validation passed')
+          for f in Path('data/results/sentiment').glob('*_sentiment.csv'):
+              df = pd.read_csv(f)
+              dist = df['sentiment'].value_counts(normalize=True) * 100
+              print(f'=== {f.stem} ===')
+              for label in ['neutral', 'positive', 'negative']:
+                  print(f'  {label}: {dist.get(label, 0):.1f}%')
+          print('Validation passed')
           "
       - name: Upload NLP results
         uses: actions/upload-artifact@v4
@@ -240,18 +217,17 @@ jobs:
             data/results/
 
   build-report:
-    name: Build Report & Visualizations
+    name: Build Report & Cross Analysis
     runs-on: ubuntu-latest
     needs: nlp-pipeline
     if: github.ref == 'refs/heads/main' && needs.nlp-pipeline.result == 'success'
     steps:
       - uses: actions/checkout@v4
-      - name: Download scraped data
+      - name: Download cleaned data
         uses: actions/download-artifact@v4
         with:
-          name: raw-data
-          path: data/raw/
-        continue-on-error: true
+          name: cleaned-data
+          path: data/cleaned/
       - name: Download NLP results
         uses: actions/download-artifact@v4
         with:
@@ -264,15 +240,37 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Cross Analysis (Topic × Sentiment × Engagement)
+        run: |
+          python src/cross_analysis.py \
+            --sentiment data/results/sentiment \
+            --topics data/results/topics \
+            --cleaned data/cleaned \
+            --output data/results/cross_analysis \
+            --figures reports/figures \
+            --config config/pipeline.yaml
       - name: Generate visualizations
-        run: python src/visualize.py --sentiment data/results/sentiment --topics data/results/topics --raw data/raw --output reports/figures
+        run: |
+          python src/visualize.py \
+            --sentiment data/results/sentiment \
+            --topics data/results/topics \
+            --raw data/cleaned \
+            --output reports/figures
       - name: Generate strategy report
-        run: python src/strategy.py --raw data/raw --sentiment data/results/sentiment --topics data/results/topics --config config/pipeline.yaml --output reports/strategy_report.md
+        run: |
+          python src/strategy.py \
+            --raw data/cleaned \
+            --sentiment data/results/sentiment \
+            --topics data/results/topics \
+            --config config/pipeline.yaml \
+            --output reports/strategy_report.md
       - name: Upload report artifacts
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ github.sha }}
-          path: reports/
+          path: |
+            reports/
+            data/results/cross_analysis/
           retention-days: 30
 
   send-email:
