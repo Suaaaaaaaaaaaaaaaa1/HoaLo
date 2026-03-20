@@ -36,20 +36,36 @@ def load_and_merge(sentiment_dir: Path, topics_dir: Path, cleaned_dir: Path) -> 
     logger.info(f"Loading sentiment: {sent_path.name}")
     df_sent = pd.read_csv(sent_path, encoding="utf-8")
 
+    topic_cols = []
     if topics_files:
         topics_path = topics_files[0]
         logger.info(f"Loading topics: {topics_path.name}")
         df_topics = pd.read_csv(topics_path, encoding="utf-8")
-        topic_cols = [c for c in df_topics.columns if c.startswith("topic_") and c.endswith("_weight")]
-        merge_cols = ["post_id", "dominant_topic"] + topic_cols
+        topic_weight_cols = [c for c in df_topics.columns if c.startswith("topic_") and c.endswith("_weight")]
+        merge_cols = ["post_id", "dominant_topic"] + topic_weight_cols
         available = [c for c in merge_cols if c in df_topics.columns]
-        df = df_sent.merge(df_topics[available], on="post_id", how="left") if "post_id" in df_topics.columns else df_sent.copy()
+
+        if "post_id" in df_topics.columns and "post_id" in df_sent.columns:
+            df = df_sent.merge(df_topics[available], on="post_id", how="left")
+        elif len(df_sent) == len(df_topics):
+            logger.info("No post_id match, merging by index (same row count)")
+            for col in available:
+                if col != "post_id":
+                    df_sent[col] = df_topics[col].values
+            df = df_sent.copy()
+        else:
+            logger.warning("Cannot merge topics — no post_id match and different row counts")
+            df = df_sent.copy()
+
+        topic_cols = [c for c in topic_weight_cols if c in df.columns]
     else:
         logger.warning(f"No doc_topics CSV found in {topics_dir}, using sentiment only")
         df = df_sent.copy()
 
     if "dominant_topic" not in df.columns and topic_cols:
         df["dominant_topic"] = df[topic_cols].idxmax(axis=1)
+    elif "dominant_topic" not in df.columns and not topic_cols:
+        logger.warning("No topic weight columns available for dominant_topic")
 
     if cleaned_path.exists():
         df_clean = pd.read_csv(cleaned_path, encoding="utf-8")
