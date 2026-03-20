@@ -103,7 +103,7 @@ def clean_posts(input_dir: Path) -> pd.DataFrame:
 
     post_url = df.get("postUrl", pd.Series(dtype="str"))
     df["postId"] = post_url.str.extract(r"/posts/([^/?]+)") if post_url.notna().any() else df.index.astype(str)
-    df["postId"] = df["postId"].fillna(df.index.astype(str))
+    df["postId"] = df["postId"].fillna(pd.Series(df.index.astype(str), index=df.index))
     df = df.drop_duplicates(subset=["postId"], keep="first")
     df = df.dropna(subset=["datetime"])
     df = df.sort_values("datetime", ascending=True).reset_index(drop=True)
