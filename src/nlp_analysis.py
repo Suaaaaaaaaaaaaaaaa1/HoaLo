@@ -1,10 +1,12 @@
 """
 NLP Analysis Pipeline — reproduces HoaLo_NLP_Analysis.ipynb
-Input: posts_cleaned.csv (from clean_data.py)
-Output: enriched CSV, JSON report, 4 PNG charts
-Steps: preprocess → LDA topics (gensim) → sentiment (rule-based) → keywords → cross-analysis
+Input: posts_cleaned.csv | Output: enriched CSV, JSON report, 4 PNG charts
 """
-import os, re, json, logging, argparse
+import os
+import re
+import json
+import logging
+import argparse
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
@@ -13,14 +15,14 @@ import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
-from wordcloud import WordCloud
+import matplotlib.pyplot as plt  # noqa: E402
+import seaborn as sns  # noqa: E402
+from wordcloud import WordCloud  # noqa: E402
 
-from underthesea import word_tokenize
-from gensim import corpora
-from gensim.models import LdaModel
-from sklearn.feature_extraction.text import TfidfVectorizer
+from underthesea import word_tokenize  # noqa: E402
+from gensim import corpora  # noqa: E402
+from gensim.models import LdaModel  # noqa: E402
+from sklearn.feature_extraction.text import TfidfVectorizer  # noqa: E402
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -63,14 +65,15 @@ NEGATIVE_WORDS = set([
     "đau_thương", "khổ_cực", "tàn_bạo", "đau_khổ", "bi_thảm",
 ])
 
-HOALO_KEYWORDS = ["tù", "giam", "tù_binh", "nhà_tù", "lịch_sử", "cách_mạng",
-                   "chiến_sĩ", "hiện_vật", "triển_lãm", "tham_quan", "di_tích", "bảo_tàng"]
+HOALO_KEYWORDS = [
+    "tù", "giam", "tù_binh", "nhà_tù", "lịch_sử", "cách_mạng",
+    "chiến_sĩ", "hiện_vật", "triển_lãm", "tham_quan", "di_tích", "bảo_tàng",
+]
 
 SENT_COLORS = {"positive": "#4CAF50", "neutral": "#FFC107", "negative": "#f44336"}
 
 
 def preprocess(df_text):
-    """Clean text + tokenize Vietnamese"""
     def clean(text):
         if pd.isna(text) or text == "":
             return ""
@@ -92,26 +95,27 @@ def preprocess(df_text):
     df_text["text_clean"] = df_text["text"].apply(clean)
     df_text["tokens"] = df_text["text_clean"].apply(tokenize)
     df_text["token_count"] = df_text["tokens"].apply(len)
-    logger.info(f"Preprocessed: avg {df_text['token_count'].mean():.1f} tokens/post, {len(set(t for toks in df_text['tokens'] for t in toks)):,} unique")
+    unique = len(set(t for toks in df_text["tokens"] for t in toks))
+    logger.info(f"Preprocessed: avg {df_text['token_count'].mean():.1f} tokens/post, {unique:,} unique")
     return df_text
 
 
 def run_lda(df_text, num_topics=7):
-    """LDA topic modeling using gensim (matches notebook)"""
     min_tokens = 3
     valid_mask = df_text["token_count"] >= min_tokens
     df_text["original_index"] = range(len(df_text))
     texts = df_text[valid_mask]["tokens"].tolist()
     valid_indices = df_text[valid_mask]["original_index"].tolist()
-
-    logger.info(f"LDA: {valid_mask.sum()} valid docs (>={min_tokens} tokens), {(~valid_mask).sum()} too short → Topic -1")
+    logger.info(f"LDA: {valid_mask.sum()} valid, {(~valid_mask).sum()} too short → Topic -1")
 
     dictionary = corpora.Dictionary(texts)
     dictionary.filter_extremes(no_below=2, no_above=0.8)
     corpus = [dictionary.doc2bow(t) for t in texts]
 
-    model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics,
-                     random_state=42, passes=10, alpha="auto", per_word_topics=True)
+    model = LdaModel(
+        corpus=corpus, id2word=dictionary, num_topics=num_topics,
+        random_state=42, passes=10, alpha="auto", per_word_topics=True,
+    )
 
     topic_labels = {}
     for idx, topic in model.print_topics(-1, num_words=10):
@@ -128,13 +132,14 @@ def run_lda(df_text, num_topics=7):
             df_text.loc[df_text["original_index"] == idx, "topic_id"] = best[0]
             df_text.loc[df_text["original_index"] == idx, "topic_prob"] = best[1]
 
-    df_text["topic_label"] = df_text["topic_id"].apply(lambda x: topic_labels.get(x, "Too Short") if x >= 0 else "Too Short")
+    df_text["topic_label"] = df_text["topic_id"].apply(
+        lambda x: topic_labels.get(x, "Too Short") if x >= 0 else "Too Short"
+    )
     logger.info(f"Topic distribution:\n{df_text['topic_id'].value_counts().sort_index()}")
-    return df_text, topic_labels, model, dictionary, corpus
+    return df_text, topic_labels
 
 
 def run_sentiment(df_text):
-    """Rule-based sentiment (matches notebook — NOT underthesea classifier)"""
     def classify(tokens):
         if not tokens:
             return "neutral", 0
@@ -153,12 +158,11 @@ def run_sentiment(df_text):
 
     dist = df_text["sentiment"].value_counts()
     for s, c in dist.items():
-        logger.info(f"  {s}: {c} ({c/len(df_text)*100:.1f}%)")
+        logger.info(f"  {s}: {c} ({c / len(df_text) * 100:.1f}%)")
     return df_text
 
 
 def run_keywords(df_text):
-    """TF-IDF + word frequency + Hỏa Lò specific keywords"""
     corpus_text = df_text["tokens"].apply(lambda x: " ".join(x)).tolist()
     tfidf = TfidfVectorizer(max_features=100, ngram_range=(1, 2), min_df=3, max_df=0.7)
     matrix = tfidf.fit_transform(corpus_text)
@@ -180,7 +184,7 @@ def run_keywords(df_text):
     return top_tfidf, top_words, hoalo_kw
 
 
-def plot_topics(df_text, topic_labels, out_dir):
+def plot_topics(df_text, out_dir):
     df_valid = df_text[df_text["topic_id"] >= 0]
     fig, axes = plt.subplots(2, 2, figsize=(18, 12))
     counts = df_valid["topic_id"].value_counts().sort_index()
@@ -197,7 +201,7 @@ def plot_topics(df_text, topic_labels, out_dir):
     axes[0, 1].set_title("Topic %", fontweight="bold")
 
     eng = df_valid.groupby("topic_id")["engagement_total"].mean().sort_index()
-    axes[1, 0].bar(range(len(eng)), eng.values, color=colors)
+    axes[1, 0].bar(range(len(eng)), eng.values, color=colors[:len(eng)])
     for i, v in enumerate(eng.values):
         axes[1, 0].text(i, v, f"{v:.0f}", ha="center", va="bottom")
     axes[1, 0].set_title("Avg Engagement by Topic", fontweight="bold")
@@ -226,7 +230,8 @@ def plot_sentiment(df_text, out_dir):
     df_t = df_text[df_text["year_month"].notna()]
     st = df_t.groupby(["year_month", "sentiment"]).size().unstack(fill_value=0)
     st_pct = st.div(st.sum(axis=1), axis=0) * 100
-    st_pct.plot(kind="bar", stacked=True, ax=axes[0, 1], color=[SENT_COLORS.get(c, "gray") for c in st_pct.columns])
+    st_pct.plot(kind="bar", stacked=True, ax=axes[0, 1],
+                color=[SENT_COLORS.get(c, "gray") for c in st_pct.columns])
     axes[0, 1].set_title("Sentiment Over Time", fontweight="bold")
     plt.setp(axes[0, 1].xaxis.get_majorticklabels(), rotation=45, ha="right")
 
@@ -307,13 +312,15 @@ def plot_cross_analysis(df_text, out_dir):
 
     ax4 = fig.add_subplot(gs[1, 2])
     cp = pd.crosstab(df_text["topic_id"], df_text["sentiment"], normalize="index") * 100
-    cp.plot(kind="bar", stacked=True, ax=ax4, color=[SENT_COLORS.get(c, "gray") for c in cp.columns])
+    cp.plot(kind="bar", stacked=True, ax=ax4,
+            color=[SENT_COLORS.get(c, "gray") for c in cp.columns])
     ax4.set_title("Sentiment % by Topic", fontweight="bold")
     plt.setp(ax4.xaxis.get_majorticklabels(), rotation=0)
 
     ter = df_v.groupby("topic_id")["engagement_total"].mean().sort_values(ascending=True)
     ax5 = fig.add_subplot(gs[2, 0])
-    ax5.barh(range(len(ter)), ter.values, color=plt.cm.RdYlGn(np.linspace(0.2, 0.8, len(ter))))
+    ax5.barh(range(len(ter)), ter.values,
+             color=plt.cm.RdYlGn(np.linspace(0.2, 0.8, len(ter))))
     ax5.set_yticks(range(len(ter)))
     ax5.set_yticklabels([f"Topic {int(i)}" for i in ter.index])
     ax5.set_title("Topic Ranking", fontweight="bold")
@@ -321,7 +328,8 @@ def plot_cross_analysis(df_text, out_dir):
     ax6 = fig.add_subplot(gs[2, 1])
     ax6.scatter(df_text["text_length"], df_text["engagement_total"], alpha=0.3, s=20)
     corr = df_text[["text_length", "engagement_total"]].corr().iloc[0, 1]
-    ax6.text(0.05, 0.95, f"Corr: {corr:.3f}", transform=ax6.transAxes, bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+    ax6.text(0.05, 0.95, f"Corr: {corr:.3f}", transform=ax6.transAxes,
+             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
     ax6.set_title("Engagement vs Length", fontweight="bold")
 
     se = df_text.groupby("sentiment")["engagement_total"].mean()
@@ -337,34 +345,52 @@ def plot_cross_analysis(df_text, out_dir):
 
 
 def export_results(df_text, topic_labels, top_tfidf, top_words, hoalo_kw, out_dir):
-    cols = ["postId", "date", "text", "text_length", "topic_id", "topic_label", "topic_prob",
-            "sentiment", "sentiment_score", "engagement_total", "reactions_total", "comment_count", "share_count"]
+    cols = [
+        "postId", "date", "text", "text_length", "topic_id", "topic_label", "topic_prob",
+        "sentiment", "sentiment_score", "engagement_total", "reactions_total", "comment_count", "share_count",
+    ]
     available = [c for c in cols if c in df_text.columns]
     df_text[available].to_csv(out_dir / "posts_nlp_enriched.csv", index=False, encoding="utf-8-sig")
 
     dist = df_text["sentiment"].value_counts()
     df_valid = df_text[df_text["topic_id"] >= 0]
     topic_stats = df_valid.groupby("topic_id").agg(
-        engagement_mean=("engagement_total", "mean"), post_count=("topic_id", "count")).round(1)
-    best_tid = topic_stats["engagement_mean"].idxmax() if not topic_stats.empty else -1
+        engagement_mean=("engagement_total", "mean"),
+        post_count=("topic_id", "count"),
+    ).round(1)
+    best_tid = int(topic_stats["engagement_mean"].idxmax()) if not topic_stats.empty else -1
     se = df_text.groupby("sentiment")["engagement_total"].mean()
-    corr = float(df_text[["text_length", "engagement_total"]].corr().iloc[0, 1])
-    sc = float(df_text[["sentiment_score", "engagement_total"]].corr().iloc[0, 1]) if "sentiment_score" in df_text.columns else 0
+    corr_len = float(df_text[["text_length", "engagement_total"]].corr().iloc[0, 1])
+    corr_sent = float(df_text[["sentiment_score", "engagement_total"]].corr().iloc[0, 1])
 
     report = {
         "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "dataset": {"total_posts": len(df_text), "avg_text_length": round(float(df_text["text_length"].mean()), 1),
-                     "total_tokens": int(df_text["token_count"].sum())},
-        "topics": {"num_topics": len(topic_labels), "labels": {str(k): v for k, v in topic_labels.items()},
-                    "best_topic": int(best_tid),
-                    "best_topic_engagement": float(topic_stats.loc[best_tid, "engagement_mean"]) if best_tid >= 0 else 0},
-        "sentiment": {s: {"count": int(dist.get(s, 0)), "pct": round(float(dist.get(s, 0) / len(df_text) * 100), 1)}
-                       for s in ["positive", "neutral", "negative"]},
-        "keywords": {"top_20_words": [(w, int(c)) for w, c in top_words[:20]],
-                      "top_15_tfidf": [(k, round(s, 3)) for k, s in top_tfidf[:15]],
-                      "hoalo_keywords": {str(k): int(v) for k, v in hoalo_kw.items()}},
-        "insights": {"engagement_sentiment_corr": round(sc, 3), "engagement_length_corr": round(corr, 3),
-                      "best_sentiment": str(se.idxmax()), "best_sentiment_engagement": round(float(se.max()), 1)},
+        "dataset": {
+            "total_posts": len(df_text),
+            "avg_text_length": round(float(df_text["text_length"].mean()), 1),
+            "total_tokens": int(df_text["token_count"].sum()),
+        },
+        "topics": {
+            "num_topics": len(topic_labels),
+            "labels": {str(k): v for k, v in topic_labels.items()},
+            "best_topic": best_tid,
+            "best_topic_engagement": float(topic_stats.loc[best_tid, "engagement_mean"]) if best_tid >= 0 else 0,
+        },
+        "sentiment": {
+            s: {"count": int(dist.get(s, 0)), "pct": round(float(dist.get(s, 0) / len(df_text) * 100), 1)}
+            for s in ["positive", "neutral", "negative"]
+        },
+        "keywords": {
+            "top_20_words": [(w, int(c)) for w, c in top_words[:20]],
+            "top_15_tfidf": [(k, round(s, 3)) for k, s in top_tfidf[:15]],
+            "hoalo_keywords": {str(k): int(v) for k, v in hoalo_kw.items()},
+        },
+        "insights": {
+            "engagement_sentiment_corr": round(corr_sent, 3),
+            "engagement_length_corr": round(corr_len, 3),
+            "best_sentiment": str(se.idxmax()),
+            "best_sentiment_engagement": round(float(se.max()), 1),
+        },
     }
     with open(out_dir / "nlp_analysis_report.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -381,7 +407,9 @@ def main():
     parser.add_argument("--config", default="config/pipeline.yaml")
     args = parser.parse_args()
 
-    inp, out, figs = Path(args.input), Path(args.output), Path(args.figures)
+    inp = Path(args.input)
+    out = Path(args.output)
+    figs = Path(args.figures)
     out.mkdir(parents=True, exist_ok=True)
     figs.mkdir(parents=True, exist_ok=True)
 
@@ -393,14 +421,14 @@ def main():
     df = pd.read_csv(csv_path, encoding="utf-8")
     df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df_text = df[df["has_text"] == True].copy()
+    df_text = df[df["has_text"]].copy()
     logger.info(f"Loaded {len(df)} posts, {len(df_text)} with text")
 
     logger.info("=== Step 1: Preprocessing ===")
     df_text = preprocess(df_text)
 
     logger.info("=== Step 2: LDA Topic Modeling ===")
-    df_text, topic_labels, model, dictionary, corpus = run_lda(df_text, num_topics=args.topics)
+    df_text, topic_labels = run_lda(df_text, num_topics=args.topics)
 
     logger.info("=== Step 3: Sentiment Analysis ===")
     df_text = run_sentiment(df_text)
@@ -409,7 +437,7 @@ def main():
     top_tfidf, top_words, hoalo_kw = run_keywords(df_text)
 
     logger.info("=== Step 5: Visualizations ===")
-    plot_topics(df_text, topic_labels, figs)
+    plot_topics(df_text, figs)
     plot_sentiment(df_text, figs)
     plot_keywords(top_tfidf, top_words, hoalo_kw, df_text, figs)
     plot_cross_analysis(df_text, figs)
@@ -418,8 +446,6 @@ def main():
     report = export_results(df_text, topic_labels, top_tfidf, top_words, hoalo_kw, out)
 
     logger.info("NLP Analysis complete!")
-    logger.info(f"  Posts: {report['dataset']['total_posts']}")
-    logger.info(f"  Topics: {report['topics']['num_topics']}, best: Topic {report['topics']['best_topic']}")
     for s in ["positive", "neutral", "negative"]:
         logger.info(f"  {s}: {report['sentiment'][s]['pct']}%")
 
