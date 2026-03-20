@@ -10,12 +10,19 @@ on:
     - cron: "0 2 * * 1"
   workflow_dispatch:
     inputs:
-      skip_scrape:
-        description: "Skip fetching data from Apify"
+      data_source:
+        description: "Data source"
+        type: choice
+        options:
+          - "fetch_apify (lấy data mới từ Apify)"
+          - "use_committed (dùng 3 file CSV có sẵn trong data/raw)"
+        default: "use_committed (dùng 3 file CSV có sẵn trong data/raw)"
+      trigger_new_crawl:
+        description: "Trigger NEW Apify crawl (slow ~15min, chỉ khi chọn fetch_apify)"
         type: boolean
         default: false
-      trigger_new_crawl:
-        description: "Trigger NEW Apify crawl (slow ~15min)"
+      send_email:
+        description: "Send report via email"
         type: boolean
         default: false
 
@@ -54,8 +61,7 @@ jobs:
     needs: lint
     if: |
       github.event_name == 'schedule' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_scrape != 'true')
+      (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.data_source, 'fetch_apify'))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -84,21 +90,26 @@ jobs:
     if: always() && needs.test.result == 'success' && (needs.fetch-data.result == 'success' || needs.fetch-data.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download Apify data (if fetched)
+        uses: actions/download-artifact@v4
         with:
           name: raw-data
           path: data/raw/
         continue-on-error: true
+      - name: List available data files
+        run: |
+          echo "=== Files in data/raw/ ==="
+          ls -la data/raw/ 2>/dev/null || echo "No data/raw/ directory"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: pip install pandas numpy
+      - run: pip install pandas
       - run: python src/clean_data.py --input data/raw --output data/cleaned
       - run: |
           python -c "
           import pandas as pd
           df = pd.read_csv('data/cleaned/posts_cleaned.csv')
-          print(f'OK: {len(df)} posts, {df[\"engagement_total\"].sum():,} engagement')
+          print(f'OK: {len(df)} posts, engagement {df[\"engagement_total\"].sum():,}')
           "
       - uses: actions/upload-artifact@v4
         with:
@@ -150,7 +161,6 @@ jobs:
           print(f\"Topics: {r['topics']['num_topics']}, best: Topic {r['topics']['best_topic']}\")
           for s in ['positive', 'neutral', 'negative']:
               print(f\"  {s}: {r['sentiment'][s]['pct']}%\")
-          print(f\"Best sentiment for engagement: {r['insights']['best_sentiment']}\")
           "
       - uses: actions/upload-artifact@v4
         with:
@@ -159,3 +169,32 @@ jobs:
             reports/
             data/results/
           retention-days: 30
+
+  send-email:
+    name: Send Report via Email
+    runs-on: ubuntu-latest
+    needs: nlp-and-report
+    if: |
+      needs.nlp-and-report.result == 'success' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.send_email == 'true'))
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: report-${{ github.sha }}
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pyyaml python-dotenv jinja2
+      - name: Send email
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+        run: |
+          python src/email_sender.py \
+            --config config/pipeline.yaml \
+            --report reports/strategy_report.md \
+            --figures reports/figures
