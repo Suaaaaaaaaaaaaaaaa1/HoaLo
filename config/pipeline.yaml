@@ -5,6 +5,10 @@ page:
 scraper:
   max_posts: 500
   actor: "apify/facebook-posts-scraper"
+  # Để trống → tự lấy dataset từ run mới nhất của Actor
+  # Điền dataset_id cụ thể → lấy từ dataset đó (nhanh nhất)
+  # Lấy dataset_id từ: Apify Console → Actor runs → click run → copy Dataset ID
+  dataset_id: null
 
 preprocessing:
   stopwords_path: "data/vietnamese_stopwords.txt"
