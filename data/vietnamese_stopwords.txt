@@ -1,0 +1,125 @@
+# Vietnamese Stopwords for Facebook Post Analysis
+# Last updated: 03/2026 (v2.1)
+# Lines starting with # are comments
+
+# Common Vietnamese stopwords
+và
+của
+là
+có
+được
+cho
+với
+này
+đã
+các
+trong
+không
+một
+những
+từ
+để
+đến
+hay
+nhiều
+như
+về
+theo
+vào
+ra
+lên
+đi
+đây
+đó
+khi
+nếu
+thì
+bởi
+vì
+mà
+nhưng
+tuy
+cũng
+rồi
+nên
+phải
+sẽ
+rất
+hơn
+nhất
+lại
+còn
+bị
+do
+nào
+gì
+ai
+sao
+thế
+bao
+bấy
+mỗi
+tất cả
+tất_cả
+
+# Social media noise
+http
+https
+www
+com
+facebook
+fb
+like
+share
+page
+post
+link
+click
+dm
+inbox
+
+# Common filler words in Vietnamese Facebook posts
+ạ
+ơi
+nhé
+nha
+hen
+nè
+á
+ha
+hehe
+hihi
+huhu
+kkk
+lol
+haha
+
+# Time/date fillers
+hôm nay
+hôm_nay
+ngày mai
+ngày_mai
+hôm qua
+hôm_qua
+tháng
+năm
+ngày
+giờ
+phút
+sáng
+chiều
+tối
+
+# Heritage site generic terms (too common to be informative)
+di tích
+di_tích
+tham quan
+tham_quan
+vé
+khách
+du lịch
+du_lịch
+địa điểm
+địa_điểm
+mở cửa
+mở_cửa

@@ -1,0 +1,45 @@
+page:
+  name: "hoa_lo"
+  url: "https://www.facebook.com/ditichhoalo/"
+
+scraper:
+  max_posts: 500
+  actor: "apify/facebook-posts-scraper"
+
+preprocessing:
+  stopwords_path: "data/vietnamese_stopwords.txt"
+  min_token_length: 2
+  max_token_length: 20
+  remove_urls: true
+  remove_emojis: true
+  lowercase: true
+
+nlp:
+  tfidf:
+    max_features: 5000
+    ngram_range: [1, 2]
+    min_df: 3
+    max_df: 0.85
+  lda:
+    n_topics: 5
+    max_iter: 30
+    random_state: 42
+    learning_method: "online"
+  sentiment:
+    method: "underthesea"
+    post_process_rules: true
+
+strategy:
+  output_format: "markdown"
+  top_n_topics: 5
+  benchmarks:
+    engagement_rate_good: 0.03
+    engagement_rate_excellent: 0.06
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  use_tls: true
+  subject_prefix: "[Hoa Lo Analysis]"
+  attach_report: true
+  attach_figures: true
