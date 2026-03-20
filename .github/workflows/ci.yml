@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: nlp-and-report
     if: |
-      needs.nlp-and-report.result == 'success' &&
+      always() && needs.nlp-and-report.result == 'success' &&
       (github.event_name == 'schedule' ||
        (github.event_name == 'workflow_dispatch' && github.event.inputs.send_email == 'true'))
     steps:
