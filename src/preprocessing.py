@@ -136,7 +136,10 @@ def main():
         logger.info(f"Loaded {len(df)} rows")
 
         processed = process_dataframe(df, stopwords, config)
-        out_path = output_dir / csv_path.name.replace("_posts.csv", "_processed.csv")
+        stem = csv_path.stem.replace("_posts", "").replace("_cleaned", "").replace("posts_", "")
+        if not stem:
+            stem = "hoa_lo"
+        out_path = output_dir / f"{stem}_processed.csv"
         processed.to_csv(out_path, index=False, encoding="utf-8-sig")
         logger.info(f"Saved {len(processed)} processed rows to {out_path}")
 
