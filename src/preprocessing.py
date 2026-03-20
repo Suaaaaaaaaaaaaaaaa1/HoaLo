@@ -120,12 +120,16 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_files = list(input_dir.glob("*_posts.csv"))
+    csv_files = list(input_dir.glob("*_posts.csv")) + list(input_dir.glob("*_cleaned.csv"))
     if not csv_files:
         logger.error(f"No CSV files found in {input_dir}")
         return
 
+    seen = set()
     for csv_path in csv_files:
+        if csv_path.name in seen:
+            continue
+        seen.add(csv_path.name)
         logger.info(f"=== Processing: {csv_path.name} ===")
         df = pd.read_csv(csv_path)
         logger.info(f"Loaded {len(df)} rows")
