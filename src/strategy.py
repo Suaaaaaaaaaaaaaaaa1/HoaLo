@@ -124,18 +124,23 @@ def generate_insights(pages: list[dict]) -> list[str]:
 
     others = [p for p in pages if p["name"] != "hoa_lo"]
 
-    if hoa_lo["positive"] > max((p["positive"] for p in others), default=0):
-        insights.append(f"Hỏa Lò dẫn đầu về tỷ lệ Positive ({hoa_lo['positive']}%), cho thấy content tạo cảm xúc tích cực tốt.")
+    if others:
+        if hoa_lo["positive"] > max(p["positive"] for p in others):
+            insights.append(f"Hỏa Lò dẫn đầu về tỷ lệ Positive ({hoa_lo['positive']}%), cho thấy content tạo cảm xúc tích cực tốt.")
+        else:
+            leader = max(others, key=lambda p: p["positive"])
+            insights.append(f"{leader['label']} có Positive cao hơn ({leader['positive']}% vs {hoa_lo['positive']}%). Hỏa Lò cần cải thiện content tạo cảm xúc.")
+
+        if hoa_lo["avg_engagement"] < max(p["avg_engagement"] for p in others):
+            leader = max(others, key=lambda p: p["avg_engagement"])
+            insights.append(f"Engagement TB của Hỏa Lò ({hoa_lo['avg_engagement']}) thấp hơn {leader['label']} ({leader['avg_engagement']}). Cần tăng tương tác.")
     else:
-        leader = max(others, key=lambda p: p["positive"])
-        insights.append(f"{leader['label']} có Positive cao hơn ({leader['positive']}% vs {hoa_lo['positive']}%). Hỏa Lò cần cải thiện content tạo cảm xúc.")
+        insights.append(f"Tỷ lệ Positive của Hỏa Lò đạt {hoa_lo['positive']}%, Neutral {hoa_lo['neutral']}%.")
+        insights.append(f"Engagement trung bình: {hoa_lo['avg_engagement']} (likes + comments + shares).")
+        insights.append(f"Tần suất đăng bài: {hoa_lo['posts_per_week']} bài/tuần.")
 
     if hoa_lo["negative"] < 2:
-        insights.append(f"Tỷ lệ Negative của Hỏa Lò rất thấp ({hoa_lo['negative']}%), phản ánh ít phản hồi tiêu cực từ cộng đồng.")
-
-    if hoa_lo["avg_engagement"] < max((p["avg_engagement"] for p in others), default=0):
-        leader = max(others, key=lambda p: p["avg_engagement"])
-        insights.append(f"Engagement TB của Hỏa Lò ({hoa_lo['avg_engagement']}) thấp hơn {leader['label']} ({leader['avg_engagement']}). Cần tăng tương tác.")
+        insights.append(f"Tỷ lệ Negative rất thấp ({hoa_lo['negative']}%), phản ánh ít phản hồi tiêu cực từ cộng đồng.")
 
     return insights
 
