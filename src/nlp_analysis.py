@@ -89,7 +89,15 @@ def preprocess(df_text):
         if not text:
             return []
         try:
-            tokens = word_tokenize(text, format="text").split()
+            # Ép dính các từ khóa đặc thù để thư viện không cắt lẻ
+            text_pre = text.replace("hỏa lò", "hỏalò").replace("nhà tù", "nhà_tù")
+            
+            # Chạy phân tách từ
+            tokens_str = word_tokenize(text_pre, format="text")
+            
+            # Trả lại định dạng dấu gạch dưới chuẩn
+            tokens = tokens_str.replace("hỏalò", "hỏa_lò").split()
+            
             return [t for t in tokens if t not in STOPWORDS and len(t) > 1]
         except Exception:
             return text.split()
