@@ -232,7 +232,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: nlp-results
-          path: .
+          path: data/
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
