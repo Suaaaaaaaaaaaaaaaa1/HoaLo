@@ -91,7 +91,7 @@ def plot_engagement_timeline(raw_dir: Path, output_dir: Path):
         page_name = csv_path.stem.replace("_posts", "")
         df = pd.read_csv(csv_path, parse_dates=["created_time"])
         df["engagement"] = df["likes"] + df["comments"] + df["shares"]
-        monthly = df.set_index("created_time").resample("M")["engagement"].mean()
+        monthly = df.set_index("created_time").resample("ME")["engagement"].mean()
         ax.plot(monthly.index, monthly.values, marker="o", markersize=4, label=PAGE_LABELS.get(page_name, page_name))
 
     ax.set_title("Average Monthly Engagement", fontweight="bold")
