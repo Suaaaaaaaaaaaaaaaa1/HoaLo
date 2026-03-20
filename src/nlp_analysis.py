@@ -47,7 +47,9 @@ STOPWORDS = set([
     "còn", "vẫn", "vừa", "mới", "luôn", "thường",
     "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín", "mười",
     "cái", "chiếc", "con", "quả", "trái", "bức", "tờ", "cuốn",
-    "chưa", "rồi",
+    "chưa", "rồi","nhận", "liên_hệ", "bằng", "cách", "lên", "chương_trình", 
+    "thực_hiện", "tổ_chức", "chi_tiết", "thông_tin", "để", "lại",
+    "cùng", "qua", "về", "những", "các", "đó", "đây", "này", "khi"
 ])
 
 POSITIVE_WORDS = set([
