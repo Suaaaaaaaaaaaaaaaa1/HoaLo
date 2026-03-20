@@ -8,12 +8,10 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
-import yaml
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -43,7 +41,7 @@ def plot_sentiment_distribution(sentiment_dir: Path, output_dir: Path):
         colors = [PALETTE.get(label, "#95a5a6") for label in dist.index]
         axes[i].pie(
             dist.values,
-            labels=[f"{l}\n({v})" for l, v in zip(dist.index, dist.values)],
+            labels=[f"{lbl}\n({v})" for lbl, v in zip(dist.index, dist.values)],
             colors=colors,
             autopct="%1.1f%%",
             startangle=90,
