@@ -70,7 +70,7 @@ def generate_report(prompt: str, api_key: str, output_path: Path):
     genai.configure(api_key=api_key)
     
     # Sử dụng model Gemini 1.5 Flash cho tốc độ nhanh và khả năng tổng hợp text tốt
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     logger.info("Đang gửi yêu cầu phân tích tới Gemini API...")
     try:
