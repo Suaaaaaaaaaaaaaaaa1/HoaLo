@@ -88,7 +88,8 @@ def tokenize_vietnamese(text: str, stopwords: set, config: dict) -> str:
 def process_dataframe(df: pd.DataFrame, stopwords: set, config: dict) -> pd.DataFrame:
     result = df.copy()
 
-    result["text_cleaned"] = result["message"].apply(lambda x: clean_text(x, config))
+    text_col = "message" if "message" in result.columns else "text"
+    result["text_cleaned"] = result[text_col].apply(lambda x: clean_text(x, config))
     result["text_tokenized"] = result["text_cleaned"].apply(
         lambda x: tokenize_vietnamese(x, stopwords, config)
     )
