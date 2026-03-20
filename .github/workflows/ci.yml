@@ -143,6 +143,7 @@ jobs:
       - run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+      
       - name: Run NLP Analysis
         run: |
           python src/nlp_analysis.py \
@@ -150,6 +151,16 @@ jobs:
             --output data/results \
             --figures reports/figures \
             --topics 7
+            
+      # --- BƯỚC MỚI: CHẠY GEMINI AI ---
+      - name: Generate AI Strategy Report
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python src/generate_insights.py \
+            --input data/results/nlp_analysis_report.json \
+            --output reports/strategy_report.md
+            
       - name: Show results
         run: |
           python -c "
@@ -159,9 +170,8 @@ jobs:
           print('=== NLP Results ===')
           print(f\"Posts: {r['dataset']['total_posts']}\")
           print(f\"Topics: {r['topics']['num_topics']}, best: Topic {r['topics']['best_topic']}\")
-          for s in ['positive', 'neutral', 'negative']:
-              print(f\"  {s}: {r['sentiment'][s]['pct']}%\")
           "
+          
       - uses: actions/upload-artifact@v4
         with:
           name: report-${{ github.sha }}
@@ -169,13 +179,14 @@ jobs:
             reports/
             data/results/
           retention-days: 30
-
   send-email:
     name: Send Report via Email
     runs-on: ubuntu-latest
     needs: nlp-and-report
+    # --- ĐÃ THÊM always() ĐỂ CHỐNG HIỆU ỨNG DOMINO ---
     if: |
-      always() && needs.nlp-and-report.result == 'success' &&
+      always() && 
+      needs.nlp-and-report.result == 'success' &&
       (github.event_name == 'schedule' ||
        (github.event_name == 'workflow_dispatch' && github.event.inputs.send_email == 'true'))
     steps:
