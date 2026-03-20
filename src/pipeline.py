@@ -1,5 +1,6 @@
 """
-Main pipeline runner — orchestrates: scrape → preprocess → sentiment → topics → visualize → strategy → email.
+Main pipeline runner.
+scrape → clean → preprocess → sentiment → topics → cross_analysis → visualize → strategy → email
 """
 import os
 import sys
@@ -16,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 STEPS = [
     ("scrape", "src/scraper.py", ["--output", "data/raw"]),
-    ("preprocess", "src/preprocessing.py", ["--input", "data/raw", "--output", "data/processed"]),
+    ("clean", "src/clean_data.py", ["--input", "data/raw", "--output", "data/cleaned"]),
+    ("preprocess", "src/preprocessing.py", ["--input", "data/cleaned", "--output", "data/processed"]),
     ("sentiment", "src/sentiment.py", ["--input", "data/processed", "--output", "data/results/sentiment"]),
     ("topics", "src/topic_modeling.py", ["--input", "data/processed", "--output", "data/results/topics"]),
-    ("visualize", "src/visualize.py", ["--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--output", "reports/figures"]),
-    ("strategy", "src/strategy.py", ["--raw", "data/raw", "--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--output", "reports/strategy_report.md"]),
+    ("cross_analysis", "src/cross_analysis.py", ["--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--cleaned", "data/cleaned", "--output", "data/results/cross_analysis", "--figures", "reports/figures"]),
+    ("visualize", "src/visualize.py", ["--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--raw", "data/cleaned", "--output", "reports/figures"]),
+    ("strategy", "src/strategy.py", ["--raw", "data/cleaned", "--sentiment", "data/results/sentiment", "--topics", "data/results/topics", "--output", "reports/strategy_report.md"]),
     ("email", "src/email_sender.py", ["--report", "reports/strategy_report.md", "--figures", "reports/figures"]),
 ]
 
