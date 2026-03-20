@@ -86,16 +86,26 @@ def plot_sentiment_comparison(sentiment_dir: Path, output_dir: Path):
 
 def plot_engagement_timeline(raw_dir: Path, output_dir: Path):
     fig, ax = plt.subplots(figsize=(12, 5))
+    has_data = False
 
     for csv_path in sorted(raw_dir.glob("*_posts.csv")):
         page_name = csv_path.stem.replace("_posts", "")
-        df = pd.read_csv(csv_path, parse_dates=["created_time"])
+        df = pd.read_csv(csv_path)
+        df["created_time"] = pd.to_datetime(df["created_time"], errors="coerce")
         df = df.dropna(subset=["created_time"])
         if df.empty:
             continue
         df["engagement"] = df["likes"].fillna(0) + df["comments"].fillna(0) + df["shares"].fillna(0)
-        monthly = df.set_index("created_time").resample("ME")["engagement"].mean()
+        df["year_month"] = df["created_time"].dt.to_period("M")
+        monthly = df.groupby("year_month")["engagement"].mean()
+        monthly.index = monthly.index.to_timestamp()
         ax.plot(monthly.index, monthly.values, marker="o", markersize=4, label=PAGE_LABELS.get(page_name, page_name))
+        has_data = True
+
+    if not has_data:
+        plt.close()
+        logger.warning("No valid data for engagement timeline")
+        return
 
     ax.set_title("Average Monthly Engagement", fontweight="bold")
     ax.set_ylabel("Avg Engagement (likes + comments + shares)")
