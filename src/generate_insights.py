@@ -58,12 +58,13 @@ def generate_prompt(data: dict) -> str:
     2. **Phân tích Sâu sắc (Deep-dive Insights):** Phân tích tại sao chủ đề "{best_topic_name}" lại hiệu quả. Đánh giá về tỷ lệ cảm xúc của người dùng.
     3. **Phân tích Từ khóa (Keyword Analysis):** Những từ khóa này phản ánh điều gì về sở thích của tệp khán giả Hỏa Lò hiện tại?
     4. **Chiến lược Nội dung 7 ngày tới (Next 7-Day Action Plan):** - Đưa ra 3-4 hành động/tuyến bài CỤ THỂ cần triển khai ngay trong tuần này. 
-       - Trọng tâm vào việc kế thừa chủ đề đang hot và khắc phục các điểm yếu (nếu có).
+       - Trọng tâm vào việc kế thừa chủ đề đang hot và khắc phục các điểm yếu.
        - Gợi ý 1 ý tưởng bài viết chi tiết (Tiêu đề, hướng nội dung) để team Content làm ngay.
     
-    LƯU Ý: 
+    NGUYÊN TẮC TỐI THƯỢNG (CẦN TUÂN THỦ NGHIÊM NGẶT): 
     - Giữ giọng văn chuyên nghiệp, khách quan, sâu sắc nhưng mang tính thực chiến cao.
-    - Định dạng rõ ràng, súc tích để team đọc xong có thể làm việc được ngay trong tuần.
+    - TUYỆT ĐỐI KHÔNG tự sáng tạo, bịa đặt ra các chương trình khuyến mãi, giảm giá vé, sự kiện ảo, hoặc các loại tour mới không có thật. Bạn chỉ được phép nhắc đến "Đêm thiêng liêng" nếu nó xuất hiện trong từ khóa.
+    - Các gợi ý ở phần 4 CHỈ ĐƯỢC PHÉP tập trung vào KHÍA CẠNH NỘI DUNG (cách viết bài, cách kể chuyện, khai thác góc nhìn mới về lịch sử, thay đổi định dạng bài đăng), tuyệt đối không đề xuất thay đổi về mặt vận hành, chính sách hay kinh doanh của di tích.
     - Không bịa đặt thêm số liệu ngoài các thông tin đã cung cấp.
     """
     return prompt
