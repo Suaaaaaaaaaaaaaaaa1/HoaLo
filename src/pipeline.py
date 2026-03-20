@@ -15,6 +15,7 @@ STEPS = [
     ("scrape", "src/scraper.py", ["--output", "data/raw"]),
     ("clean", "src/clean_data.py", ["--input", "data/raw", "--output", "data/cleaned"]),
     ("nlp", "src/nlp_analysis.py", ["--input", "data/cleaned", "--output", "data/results", "--figures", "reports/figures"]),
+    ("insights", "src/generate_insights.py", ["--input", "data/results/nlp_analysis_report.json", "--output", "reports/strategy_report.md"]),
     ("email", "src/email_sender.py", ["--report", "reports/strategy_report.md", "--figures", "reports/figures"]),
 ]
 
