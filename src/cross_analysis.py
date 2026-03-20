@@ -281,13 +281,26 @@ def export_enriched(df: pd.DataFrame, output_dir: Path):
     logger.info(f"Saved enriched dataset: {out_path} ({len(df_export)} rows)")
 
 
+def _convert_keys(obj):
+    """Recursively convert dict keys to str for JSON serialization."""
+    if isinstance(obj, dict):
+        return {str(k): _convert_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_keys(i) for i in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    return obj
+
+
 def generate_report(topic_sentiment: dict, topic_engagement: dict, sentiment_engagement: dict, output_dir: Path):
-    report = {
+    report = _convert_keys({
         "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "topic_sentiment": topic_sentiment,
         "topic_engagement": topic_engagement,
         "sentiment_engagement": sentiment_engagement,
-    }
+    })
 
     out_path = output_dir / "cross_analysis_report.json"
     with open(out_path, "w", encoding="utf-8") as f:
