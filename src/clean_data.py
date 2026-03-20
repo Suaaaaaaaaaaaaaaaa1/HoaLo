@@ -1,12 +1,12 @@
 """
 Data Cleaning: 3 raw files → posts_cleaned.csv, comments_cleaned.csv, reviews_cleaned.csv
-Reproduces EDA notebook (Hoa_Lo_Facebook_Analysis.ipynb) cleaning logic.
 """
-import os, logging, argparse, json, re
+import os
+import logging
+import argparse
 from pathlib import Path
-from datetime import datetime
+
 import pandas as pd
-import numpy as np
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,8 +33,9 @@ def clean_posts(input_dir: Path) -> pd.DataFrame:
 
     df = pd.DataFrame()
     col_map = {
-        "postUrl": ["postUrl", "url", "postUrl"],
-        "timestamp": ["timestamp"], "time": ["time"],
+        "postUrl": ["postUrl", "url"],
+        "timestamp": ["timestamp"],
+        "time": ["time"],
         "text": ["text", "message", "content"],
         "isVideo": ["isVideo", "is_video"],
         "topReactionsCount": ["topReactionsCount", "likes", "reactions_total"],
@@ -107,10 +108,12 @@ def clean_posts(input_dir: Path) -> pd.DataFrame:
     df = df.dropna(subset=["datetime"])
     df = df.sort_values("datetime", ascending=True).reset_index(drop=True)
 
-    keep = ["postId", "postUrl", "datetime", "date", "year", "month", "day", "year_month", "hour", "weekday",
-            "text", "text_length", "has_text", "media_type", "media_url", "isVideo",
-            "reactions_total", "comment_count", "share_count", "views_count", "engagement_total",
-            "estimated_like", "love_count", "estimated_care", "estimated_haha", "wow_count", "estimated_sad", "estimated_angry"]
+    keep = [
+        "postId", "postUrl", "datetime", "date", "year", "month", "day", "year_month", "hour", "weekday",
+        "text", "text_length", "has_text", "media_type", "media_url", "isVideo",
+        "reactions_total", "comment_count", "share_count", "views_count", "engagement_total",
+        "estimated_like", "love_count", "estimated_care", "estimated_haha", "wow_count", "estimated_sad", "estimated_angry",
+    ]
     df = df[[c for c in keep if c in df.columns]]
     logger.info(f"Cleaned posts: {len(df)} rows, date {df['date'].min()} → {df['date'].max()}, engagement {df['engagement_total'].sum():,}")
     return df
