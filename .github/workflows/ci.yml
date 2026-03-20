@@ -16,9 +16,13 @@ on:
   workflow_dispatch:
     inputs:
       skip_scrape:
-        description: "Skip Apify scraping (use existing data)"
+        description: "Skip fetching data from Apify"
         type: boolean
-        default: true
+        default: false
+      trigger_new_crawl:
+        description: "Trigger NEW Apify crawl (slow, 10-15min). Default: fetch latest dataset (fast)"
+        type: boolean
+        default: false
       send_email:
         description: "Send report via email"
         type: boolean
@@ -82,12 +86,13 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  scrape:
-    name: Scrape Hỏa Lò via Apify
+  fetch-data:
+    name: Fetch Data from Apify
     runs-on: ubuntu-latest
     needs: lint
     if: |
-      (github.event_name == 'schedule') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_scrape != 'true')
     steps:
       - uses: actions/checkout@v4
@@ -98,10 +103,17 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install apify-client pandas pyyaml python-dotenv
-      - name: Run Apify scraper
+      - name: Fetch data from Apify
         env:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
-        run: python src/scraper.py --output data/raw --config config/pipeline.yaml
+        run: |
+          if [ "${{ github.event.inputs.trigger_new_crawl }}" = "true" ]; then
+            echo "Triggering NEW Apify crawl (slow)..."
+            python src/scraper.py --output data/raw --config config/pipeline.yaml --trigger
+          else
+            echo "Fetching latest dataset from Apify (fast)..."
+            python src/scraper.py --output data/raw --config config/pipeline.yaml
+          fi
       - name: Upload raw data
         uses: actions/upload-artifact@v4
         with:
@@ -112,8 +124,8 @@ jobs:
   data-validation:
     name: Validate Data & EDA
     runs-on: ubuntu-latest
-    needs: [test]
-    if: always() && needs.test.result == 'success'
+    needs: [test, fetch-data]
+    if: always() && needs.test.result == 'success' && (needs.fetch-data.result == 'success' || needs.fetch-data.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
       - name: Download scraped data (if available)
@@ -165,11 +177,11 @@ jobs:
   nlp-pipeline:
     name: NLP & Sentiment Analysis
     runs-on: ubuntu-latest
-    needs: [test, data-validation]
-    if: always() && needs.test.result == 'success' && needs.data-validation.result == 'success'
+    needs: data-validation
+    if: needs.data-validation.result == 'success'
     steps:
       - uses: actions/checkout@v4
-      - name: Download scraped data (if available)
+      - name: Download scraped data
         uses: actions/download-artifact@v4
         with:
           name: raw-data
