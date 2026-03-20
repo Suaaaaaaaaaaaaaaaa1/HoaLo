@@ -1,0 +1,291 @@
+name: Hoa Lo Facebook Analysis Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "src/**"
+      - "data/vietnamese_stopwords.txt"
+      - "config/**"
+      - "notebooks/**"
+      - "requirements.txt"
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      skip_scrape:
+        description: "Skip Apify scraping (use existing data)"
+        type: boolean
+        default: true
+      send_email:
+        description: "Send report via email"
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('requirements.txt') }}
+      - name: Install lint tools
+        run: pip install ruff nbstripout nbqa
+      - name: Ruff check source
+        run: ruff check src/ --output-format=github
+      - name: Ruff check notebooks
+        run: nbqa ruff notebooks/ --output-format=github
+        continue-on-error: true
+      - name: Check notebook outputs stripped
+        run: |
+          for nb in notebooks/*.ipynb; do
+            [ -f "$nb" ] && nbstripout --is-stripped "$nb"
+          done
+        continue-on-error: true
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      - name: Run tests
+        run: pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  scrape:
+    name: Scrape Hỏa Lò via Apify
+    runs-on: ubuntu-latest
+    needs: lint
+    if: |
+      (github.event_name == 'schedule') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_scrape != 'true')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install apify-client pandas pyyaml python-dotenv
+      - name: Run Apify scraper
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: python src/scraper.py --output data/raw --config config/pipeline.yaml
+      - name: Upload raw data
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-data
+          path: data/raw/
+          retention-days: 90
+
+  data-validation:
+    name: Validate Data & EDA
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: always() && needs.test.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download scraped data (if available)
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: data/raw/
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate raw data schema
+        run: |
+          python -c "
+          import pandas as pd, sys
+          from pathlib import Path
+
+          required_cols = ['post_id', 'message', 'created_time', 'type', 'likes', 'comments', 'shares']
+          csv_path = Path('data/raw/hoa_lo_posts.csv')
+
+          if not csv_path.exists():
+              print('WARN: hoa_lo_posts.csv not found, skipping validation')
+              sys.exit(0)
+
+          df = pd.read_csv(csv_path)
+          missing = set(required_cols) - set(df.columns)
+          if missing:
+              print(f'FAIL: missing columns: {missing}')
+              sys.exit(1)
+          print(f'OK: hoa_lo_posts.csv — {len(df)} rows, {len(df.columns)} cols')
+          "
+      - name: Run EDA notebook (headless)
+        run: |
+          pip install jupyter nbconvert
+          if [ -f notebooks/01_eda.ipynb ]; then
+            jupyter nbconvert --to notebook --execute \
+              --ExecutePreprocessor.timeout=600 \
+              --output /tmp/eda_output.ipynb \
+              notebooks/01_eda.ipynb
+          else
+            echo "EDA notebook not found, skipping"
+          fi
+        continue-on-error: true
+
+  nlp-pipeline:
+    name: NLP & Sentiment Analysis
+    runs-on: ubuntu-latest
+    needs: [test, data-validation]
+    if: always() && needs.test.result == 'success' && needs.data-validation.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download scraped data (if available)
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: data/raw/
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-nlp-${{ hashFiles('requirements.txt') }}
+      - name: Cache underthesea models
+        uses: actions/cache@v4
+        with:
+          path: ~/.underthesea
+          key: ${{ runner.os }}-underthesea-v2
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Step 1 — Preprocessing
+        run: python src/preprocessing.py --input data/raw --output data/processed --config config/pipeline.yaml
+      - name: Step 2 — Sentiment Analysis
+        run: python src/sentiment.py --input data/processed --output data/results/sentiment --config config/pipeline.yaml
+      - name: Step 3 — LDA Topic Modeling
+        run: python src/topic_modeling.py --input data/processed --output data/results/topics --config config/pipeline.yaml
+      - name: Validate sentiment distribution
+        run: |
+          python -c "
+          import pandas as pd, sys
+          from pathlib import Path
+
+          csv_path = Path('data/results/sentiment/hoa_lo_sentiment.csv')
+          if not csv_path.exists():
+              print('WARN: No sentiment results found')
+              sys.exit(0)
+
+          df = pd.read_csv(csv_path)
+          dist = df['sentiment'].value_counts(normalize=True) * 100
+          print('=== Hỏa Lò Sentiment ===')
+          for label in ['neutral', 'positive', 'negative']:
+              pct = dist.get(label, 0)
+              print(f'  {label}: {pct:.1f}%')
+          if dist.get('neutral', 0) < 40:
+              print('WARN: neutral < 40%, check preprocessing')
+          print('Sentiment validation passed')
+          "
+      - name: Upload NLP results
+        uses: actions/upload-artifact@v4
+        with:
+          name: nlp-results
+          path: |
+            data/processed/
+            data/results/
+
+  build-report:
+    name: Build Report & Visualizations
+    runs-on: ubuntu-latest
+    needs: nlp-pipeline
+    if: github.ref == 'refs/heads/main' && needs.nlp-pipeline.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download scraped data
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: data/raw/
+        continue-on-error: true
+      - name: Download NLP results
+        uses: actions/download-artifact@v4
+        with:
+          name: nlp-results
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Generate visualizations
+        run: python src/visualize.py --sentiment data/results/sentiment --topics data/results/topics --raw data/raw --output reports/figures
+      - name: Generate strategy report
+        run: python src/strategy.py --raw data/raw --sentiment data/results/sentiment --topics data/results/topics --config config/pipeline.yaml --output reports/strategy_report.md
+      - name: Upload report artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.sha }}
+          path: reports/
+          retention-days: 30
+
+  send-email:
+    name: Send Report via Email
+    runs-on: ubuntu-latest
+    needs: build-report
+    if: |
+      needs.build-report.result == 'success' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.send_email == 'true'))
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: report-${{ github.sha }}
+          path: reports/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install pyyaml python-dotenv jinja2
+      - name: Send email
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+        run: python src/email_sender.py --config config/pipeline.yaml --report reports/strategy_report.md --figures reports/figures
