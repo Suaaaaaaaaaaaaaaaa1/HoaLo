@@ -79,24 +79,41 @@ REPORT_TEMPLATE = """# Báo Cáo Chiến Lược Social Media Marketing
 def compute_page_stats(raw_dir: Path, sentiment_dir: Path) -> list[dict]:
     pages = []
 
-    for csv_path in sorted(raw_dir.glob("*_posts.csv")):
-        page_name = csv_path.stem.replace("_posts", "")
-        df = pd.read_csv(csv_path, parse_dates=["created_time"])
+    csv_files = sorted(raw_dir.glob("*_posts.csv")) + sorted(raw_dir.glob("*_cleaned.csv"))
+    if not csv_files:
+        logger.warning(f"No CSV files found in {raw_dir}")
+        return pages
+
+    for csv_path in csv_files:
+        page_name = csv_path.stem.replace("_posts", "").replace("_cleaned", "").replace("posts_", "")
+        if not page_name:
+            page_name = "hoa_lo"
+        df = pd.read_csv(csv_path)
+
+        time_col = "datetime" if "datetime" in df.columns else "created_time"
+        df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+        df = df.dropna(subset=[time_col])
 
         total = len(df)
-        df["engagement"] = df["likes"] + df["comments"] + df["shares"]
+        if "engagement_total" in df.columns:
+            df["engagement"] = df["engagement_total"]
+        else:
+            likes = pd.to_numeric(df.get("likes", df.get("reactions_total", 0)), errors="coerce").fillna(0)
+            comments = pd.to_numeric(df.get("comments", df.get("comment_count", 0)), errors="coerce").fillna(0)
+            shares = pd.to_numeric(df.get("shares", df.get("share_count", 0)), errors="coerce").fillna(0)
+            df["engagement"] = likes + comments + shares
         avg_eng = round(df["engagement"].mean(), 1)
 
         if total > 1:
-            date_range = (df["created_time"].max() - df["created_time"].min()).days
+            date_range = (df[time_col].max() - df[time_col].min()).days
             posts_per_week = round(total / max(date_range / 7, 1), 1)
         else:
             posts_per_week = 0
 
-        sentiment_path = sentiment_dir / f"{page_name}_sentiment.csv"
+        sentiment_files = list(sentiment_dir.glob(f"{page_name}_sentiment.csv")) + list(sentiment_dir.glob("*_sentiment.csv"))
         positive, neutral, negative = 0.0, 0.0, 0.0
-        if sentiment_path.exists():
-            sdf = pd.read_csv(sentiment_path)
+        if sentiment_files:
+            sdf = pd.read_csv(sentiment_files[0])
             dist = sdf["sentiment"].value_counts(normalize=True) * 100
             positive = round(dist.get("positive", 0), 1)
             neutral = round(dist.get("neutral", 0), 1)
